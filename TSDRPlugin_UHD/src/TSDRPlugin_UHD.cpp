@@ -6,8 +6,8 @@
 # which accompanies this distribution, and is available at
 # http://www.gnu.org/licenses/gpl.html
 # 
-# Contributors:
-#     Martin Marinov - initial API and implementation
+# 贡献者:
+#     Martin Marinov - 初始API和实现
 #-------------------------------------------------------------------------------
 */
 #include <stdio.h>
@@ -35,21 +35,37 @@
 
 #include "errors.hpp"
 
+// 回调函数调用的频率（秒）
 #define HOW_OFTEN_TO_CALL_CALLBACK_SEC (0.06)
+// 可容忍的丢包率
 #define FRACT_DROPPED_TO_TOLERATE (0)
 
+// UHD USRP设备智能指针
 uhd::usrp::multi_usrp::sptr usrp;
 namespace po = boost::program_options;
 
+// 请求的中心频率
 uint32_t req_freq = 105e6;
+// 请求的增益
 float req_gain = 1;
+// 请求的采样率
 double req_rate = 25e6;
+// 运行状态标志
 volatile int is_running = 0;
 
+/**
+ * @brief 获取插件的名称。
+ * @param name [out] 用于存储插件名称的字符数组。
+ */
 EXTERNC TSDRPLUGIN_API void __stdcall tsdrplugin_getName(char * name) {
 	strcpy(name, "TSDR UHD USRP Compatible Plugin");
 }
 
+/**
+ * @brief 将0-1范围的归一化增益转换为USRP设备特定的增益值。
+ * @param gain [in] 归一化的增益值 (0.0f - 1.0f)。
+ * @return USRP硬件实际使用的增益值。
+ */
 double tousrpgain(float gain) {
 	try {
 		uhd::gain_range_t range = usrp->get_rx_gain_range();
@@ -57,12 +73,18 @@ double tousrpgain(float gain) {
 	}
 	catch (std::exception const&  ex)
 	{
+		// 如果获取失败，返回一个默认范围计算值
 		return gain * 60;
 	}
 }
 
+/**
+ * @brief 初始化UHD插件和USRP设备。
+ * @param params [in] 包含设备参数的字符串，格式类似命令行参数。
+ * @return 成功返回TSDR_OK，失败返回错误码。
+ */
 EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_init(const char * params) {
-	// simulate argv and argc
+	// 模拟argc和argv，用于boost::program_options解析
 	std::string sparams(params);
 
 	typedef std::vector< std::string > split_vector_type;
@@ -77,20 +99,20 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_init(const char * params) {
 	for (int i = 0; i < argc-1; i++)
 		argv[i+1] = (char *) argscounter[i].c_str();
 
-	//variables to be set by po
+	// program_options将设置这些变量
 	std::string args, file, ant, subdev, ref, tsrc;
 	double bw;
 
-	//setup the program options
-	po::options_description desc("Allowed options");
+	// 设置程序选项
+	po::options_description desc("允许的选项");
 	desc.add_options()
-			("args", po::value<std::string>(&args)->default_value(""), "multi uhd device address args")
-			("ant", po::value<std::string>(&ant), "daughterboard antenna selection")
-			("rate", po::value<double>(&req_rate)->default_value(req_rate), "rate of incoming samples")
-			("subdev", po::value<std::string>(&subdev), "daughterboard subdevice specification")
-			("bw", po::value<double>(&bw), "daughterboard IF filter bandwidth in Hz")
-			("ref", po::value<std::string>(&ref)->default_value("internal"), "waveform type (internal, external, mimo)")
-			("tsrc", po::value<std::string>(&tsrc)->default_value("external"), "time source (none, external, _external_, mimo)") ;
+			("args", po::value<std::string>(&args)->default_value(""), "multi uhd设备地址参数")
+			("ant", po::value<std::string>(&ant), "子板天线选择")
+			("rate", po::value<double>(&req_rate)->default_value(req_rate), "输入采样率")
+			("subdev", po::value<std::string>(&subdev), "子板规格")
+			("bw", po::value<double>(&bw), "子板中频滤波器带宽 (Hz)")
+			("ref", po::value<std::string>(&ref)->default_value("internal"), "时钟源 (internal, external, mimo)")
+			("tsrc", po::value<std::string>(&tsrc)->default_value("external"), "时间源 (none, external, _external_, mimo)") ;
 
 	po::variables_map vm;
 	try {
@@ -98,36 +120,36 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_init(const char * params) {
 		po::notify(vm);
 	} catch (std::exception const&  ex)
 	{
-		std::string msg(boost::str(boost::format("Error: %s\n\nTSDRPlugin_UHD %s") % ex.what() % desc));
+		std::string msg(boost::str(boost::format("错误: %s\n\nTSDRPlugin_UHD %s") % ex.what() % desc));
 		RETURN_EXCEPTION(msg.c_str(), TSDR_PLUGIN_PARAMETERS_WRONG);
 	}
 
 	try {
-		//create a usrp device
+		// 创建一个usrp设备
 		usrp = uhd::usrp::multi_usrp::make(args);
 
-		//Lock mboard clocks
+		// 锁定主板时钟
 		usrp->set_clock_source(ref);
 		if (vm.count("tsrc")) usrp->set_time_source(tsrc);
 
 		usrp->set_rx_rate(req_rate);
 		req_rate = usrp->get_rx_rate();
 
-		//set the rx center frequency
+		// 设置接收中心频率
 		usrp->set_rx_freq(req_freq);
 
-		//set the rx rf gain
+		// 设置接收射频增益
 		usrp->set_rx_gain(tousrpgain(req_gain));
-		//set the antenna
+		// 设置天线
 		if (vm.count("ant")) usrp->set_rx_antenna(ant);
 
-		//set the IF filter bandwidth
+		// 设置中频滤波器带宽
 		if (vm.count("bw"))
 			usrp->set_rx_bandwidth(bw);
 
-		boost::this_thread::sleep(boost::posix_time::seconds(1)); //allow for some setup time
+		boost::this_thread::sleep(boost::posix_time::seconds(1)); // 留出一些设置时间
 
-		//Check Ref and LO Lock detect
+		// 检查参考时钟和本振锁定检测
 		std::vector<std::string> rx_sensor_names;
 		rx_sensor_names = usrp->get_rx_sensor_names(0);
 		if (std::find(rx_sensor_names.begin(), rx_sensor_names.end(), "lo_locked") != rx_sensor_names.end()) {
@@ -152,9 +174,14 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_init(const char * params) {
 	free(argv);
 	RETURN_OK();
 
-	return 0; // to avoid getting warning from stupid Eclpse
+	return 0; // 避免Eclipse报警告
 }
 
+/**
+ * @brief 设置USRP设备的采样率。
+ * @param rate [in] 请求的采样率。
+ * @return 硬件实际设置的采样率。
+ */
 EXTERNC TSDRPLUGIN_API uint32_t __stdcall tsdrplugin_setsamplerate(uint32_t rate) {
 	if (is_running)
 		return tsdrplugin_getsamplerate();
@@ -173,6 +200,10 @@ EXTERNC TSDRPLUGIN_API uint32_t __stdcall tsdrplugin_setsamplerate(uint32_t rate
 	return req_rate;
 }
 
+/**
+ * @brief 获取USRP设备当前的采样率。
+ * @return 当前的采样率。
+ */
 EXTERNC TSDRPLUGIN_API uint32_t __stdcall tsdrplugin_getsamplerate() {
 
 	try {
@@ -185,6 +216,11 @@ EXTERNC TSDRPLUGIN_API uint32_t __stdcall tsdrplugin_getsamplerate() {
 	return req_rate;
 }
 
+/**
+ * @brief 设置USRP设备的中心频率。
+ * @param freq [in] 请求的中心频率。
+ * @return 成功返回TSDR_OK。
+ */
 EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_setbasefreq(uint32_t freq) {
 	req_freq = freq;
 
@@ -197,16 +233,25 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_setbasefreq(uint32_t freq) {
 
 	RETURN_OK();
 
-	return 0; // to avoid getting warning from stupid Eclpse
+	return 0; // 避免Eclipse报警告
 }
 
+/**
+ * @brief 停止异步读取循环。
+ * @return 成功返回TSDR_OK。
+ */
 EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_stop(void) {
 	is_running = 0;
 	RETURN_OK();
 
-	return 0; // to avoid getting warning from stupid Eclpse
+	return 0; // 避免Eclipse报警告
 }
 
+/**
+ * @brief 设置USRP设备的接收增益。
+ * @param gain [in] 归一化的增益值 (0.0f - 1.0f)。
+ * @return 成功返回TSDR_OK。
+ */
 EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_setgain(float gain) {
 	req_gain = gain;
 	try {
@@ -217,9 +262,17 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_setgain(float gain) {
 	}
 	RETURN_OK();
 
-	return 0; // to avoid getting warning from stupid Eclpse
+	return 0; // 避免Eclipse报警告
 }
 
+/**
+ * @brief 异步读取USRP数据。
+ * @details 这是一个阻塞函数，它会启动一个循环来从USRP接收数据，
+ *          并将数据存入缓冲区。当缓冲区满时，通过回调函数cb将数据传出。
+ * @param cb [in] 数据回调函数指针。
+ * @param ctx [in] 传递给回调函数的用户上下文指针。
+ * @return 成功返回TSDR_OK，失败返回错误码。
+ */
 EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_function cb, void *ctx) {
 	uhd::set_thread_priority_safe();
 
@@ -228,21 +281,21 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_f
 	float * buff = NULL;
 
 	try {
-		//set the rx sample rate
+		// 设置接收采样率
 		usrp->set_rx_rate(req_rate);
 
-		//set the rx center frequency
+		// 设置接收中心频率
 		usrp->set_rx_freq(req_freq);
 
-		//set the rx rf gain
+		// 设置接收射频增益
 		usrp->set_rx_gain(tousrpgain(req_gain));
 
-		//create a receive streamer
-		uhd::stream_args_t stream_args("fc32"); //complex floats
+		// 创建一个接收流
+		uhd::stream_args_t stream_args("fc32"); // 复数浮点数
 		uhd::rx_streamer::sptr rx_stream = usrp->get_rx_stream(stream_args);
 
-		//loop until total number of samples reached
-		// 1 sample = 2 items
+		// 循环直到达到总样本数
+		// 1个样本 = 2个item (I和Q)
 		uhd::rx_metadata_t md;
 		md.has_time_spec = false;
 
@@ -252,48 +305,48 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_f
 		buff = (float *) malloc(sizeof(float) * buff_size);
 		const size_t items_per_api_read = samples_per_api_read*2;
 
-		// initialize counters
+		// 初始化计数器
 		size_t items_in_buffer = 0;
 
 		const uint64_t samp_rate_uint = req_rate;
 		const double samp_rate_fract = req_rate - (double) samp_rate_uint;
-		//setup streaming
+		// 设置流
 		usrp->set_time_now(uhd::time_spec_t(0.0));
 		rx_stream->issue_stream_cmd(uhd::stream_cmd_t::STREAM_MODE_START_CONTINUOUS);
 
 		uint64_t last_firstsample = 0;
 
 		while(is_running){
-			// if next call will overflow our buffer, call the callback
+			// 如果下一次读取将溢出我们的缓冲区，则调用回调函数
 			if (items_per_api_read + items_in_buffer > buff_size) {
 				int64_t dropped_samples = 0;
 				const uint64_t samples_in_buffer = items_in_buffer >> 1;
 
-				// estimate dropped samples
+				// 估算丢弃的样本数
 				if (md.has_time_spec) {
 					const uint64_t roundsecs = (uint64_t) md.time_spec.get_full_secs();
 					uint64_t first_sample_id = roundsecs * samp_rate_uint;
 					first_sample_id += roundsecs * samp_rate_fract + 0.5;
 					first_sample_id += md.time_spec.get_frac_secs() * req_rate + 0.5;
 
-					// we should have the id of the first sample in our first_sample_id
+					// 我们应该在first_sample_id中得到第一个样本的ID
 					const uint64_t expected_first_sample_id = last_firstsample + samples_in_buffer;
 					const int64_t dropped_samples_now = first_sample_id - expected_first_sample_id;
 
 					dropped_samples = dropped_samples_now;
 
-					// estimate next frame
+					// 估算下一帧
 					last_firstsample = first_sample_id;
 				}
 
 				if (dropped_samples <= 0)
-					cb(buff, items_in_buffer, ctx, 0); // nothing was dropped, nice
+					cb(buff, items_in_buffer, ctx, 0); // 没有丢包，很好
 				else if ((dropped_samples / ((float) samples_in_buffer)) < FRACT_DROPPED_TO_TOLERATE)
-					cb(buff, items_in_buffer, ctx, dropped_samples); // some part of the data was dropped, but that's fine
+					cb(buff, items_in_buffer, ctx, dropped_samples); // 部分数据丢失，但可接受
 				else
-					cb(buff, 0, ctx, dropped_samples + samples_in_buffer); // too much dropped, abort
+					cb(buff, 0, ctx, dropped_samples + samples_in_buffer); // 丢失过多，中止
 
-				// reset counters, the native buffer is empty
+				// 重置计数器，原生缓冲区已空
 				items_in_buffer = 0;
 			}
 
@@ -301,17 +354,17 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_f
 					&buff[items_in_buffer], samples_per_api_read, md
 			);
 
-			// vizualize gap
+			// 可视化间隙
 			items_in_buffer+=(num_rx_samps << 1);
 
-			//handle the error codes
+			// 处理错误码
 			switch(md.error_code){
 			case uhd::rx_metadata_t::ERROR_CODE_NONE:
 				break;
 
 			case uhd::rx_metadata_t::ERROR_CODE_TIMEOUT:
 				std::cout << boost::format(
-						"Got timeout before all samples received, possible packet loss."
+						"在接收所有样本前超时，可能发生丢包。"
 				) << std::endl;
 				break;
 			case uhd::rx_metadata_t::ERROR_CODE_OVERFLOW:
@@ -320,7 +373,7 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_f
 
 			default:
 				std::cout << boost::format(
-						"Got error code 0x%x, exiting loop..."
+						"收到错误码 0x%x, 退出循环..."
 				) % md.error_code << std::endl;
 				goto done_loop;
 			}
@@ -329,11 +382,11 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_f
 
 		usrp->issue_stream_cmd(uhd::stream_cmd_t::STREAM_MODE_STOP_CONTINUOUS);
 
-		// flush usrpbuffer
+		// 清空USRP缓冲区
 	    while(rx_stream->recv(
 	        buff, samples_per_api_read, md
 	    )){
-	        /* NOP */
+	        /* 无操作 */
 	    };
 	}
 	catch (std::exception const&  ex)
@@ -345,9 +398,12 @@ EXTERNC TSDRPLUGIN_API int __stdcall tsdrplugin_readasync(tsdrplugin_readasync_f
 	if (buff!=NULL) free(buff);
 	RETURN_OK();
 
-	return 0; // to avoid getting warning from stupid Eclpse
+	return 0; // 避免Eclipse报警告
 }
 
+/**
+ * @brief 清理并释放插件资源。
+ */
 EXTERNC TSDRPLUGIN_API void __stdcall tsdrplugin_cleanup(void) {
 
 	try {

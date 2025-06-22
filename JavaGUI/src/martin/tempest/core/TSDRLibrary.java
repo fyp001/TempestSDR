@@ -1,12 +1,10 @@
 /*******************************************************************************
- * Copyright (c) 2014 Martin Marinov.
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the GNU Public License v3.0
- * which accompanies this distribution, and is available at
- * http://www.gnu.org/licenses/gpl.html
+ * 版权所有 (c) 2014 Martin Marinov.
+ * 保留所有权利。本程序及其附带的材料根据 GNU 通用公共许可证 v3.0 发布，
+ * 许可证随附于本发行版，也可在 http://www.gnu.org/licenses/gpl.html 获取。
  * 
- * Contributors:
- *     Martin Marinov - initial API and implementation
+ * 贡献者：
+ *     Martin Marinov - 初始API和实现
  ******************************************************************************/
 package martin.tempest.core;
 
@@ -28,9 +26,8 @@ import martin.tempest.gui.VideoMode;
 import martin.tempest.sources.TSDRSource;
 
 /**
- * This is a Java wrapper library for TSDRLibrary. It aims to be platform independent as long as
- * the library is compiled for the corresponding OS and the native dlls are located in lib/OSNAME/ARCH or in
- * LD_LIBRARY_PATH. It controls the native library and exposes its full functionality.
+ * 这是 TSDRLibrary 的 Java 封装库。只要本地库为对应操作系统编译，并且本地dll位于 lib/OSNAME/ARCH 或 LD_LIBRARY_PATH 下，
+ * 就可以实现平台无关的调用。它控制本地库并暴露其全部功能。
  * 
  * @author Martin Marinov
  *
@@ -38,38 +35,37 @@ import martin.tempest.sources.TSDRSource;
 public class TSDRLibrary {
 	private final static ArrayList<String> files_to_delete_on_shutdown = new ArrayList<String>();
 	
-	/** The image that will be have its pixels written by the NDK */
+	/** NDK将写入像素的图像对象 */
 	private BufferedImage bimage;
-	/** A pointer to the pixels of {@link #bimage} */
+	/** 指向 {@link #bimage} 像素的指针 */
 	private volatile int[] pixels;
 	
-	/** The desired direction of manual synchronisation */
+	/** 手动同步的方向 */
 	public enum SYNC_DIRECTION {ANY, UP, DOWN, LEFT, RIGHT};
 	
 	public enum PARAM {AUTOSHIFT, PLLFRAMERATE, AUTOCORR_PLOTS_RESET, AUTOCORR_PLOTS_OFF, SUPERRESOLUTION, NEAREST_NEIGHBOUR_RESAMPLING, LOW_PASS_BEFORE_SYNC, AUTOGAIN_AFTER_PROCESSING, AUTOCORR_DUMP};
 	public enum PARAM_DOUBLE {};
 	
-	/** Whether native is running or not */
+	/** 本地是否正在运行 */
 	volatile private boolean nativerunning = false;
 	
 	private final Object float_array_locker = new Object();
 	private int float_array_locker_count = 0;
 	private double[] double_array;
 	
-	/** If the binaries weren't loaded, this will go off */
+	/** 如果二进制库未加载，将抛出此异常 */
 	private static TSDRLibraryNotCompatible m_e = null;
 	
-	/** A list of all of the callbacks that will receive a frame when it is ready */
+	/** 所有注册的帧回调列表 */
 	private final List<FrameReadyCallback> callbacks = new ArrayList<FrameReadyCallback>();
 	
 	private final List<IncomingValueCallback> value_callbacks = new ArrayList<IncomingValueCallback>();
 	
 	/**
-	 * Returns a OS specific library filename. If you supply "abc" on Windows, this function
-	 * will return abc.dll. On Linux this will return libabc.so, etc.
-	 * @param name
-	 * @throws TSDRLibraryNotCompatible if current OS not supported
-	 * @return
+	 * 根据操作系统返回对应的动态库文件名。
+	 * @param name 库名（不带扩展名）
+	 * @throws TSDRLibraryNotCompatible 如果当前操作系统不支持
+	 * @return 完整库文件名
 	 */
 	public static final String getNativeLibraryFullName(final String name) throws TSDRLibraryNotCompatible {
 		final String rawOSNAME = System.getProperty("os.name").toLowerCase();
@@ -85,16 +81,16 @@ public class TSDRLibrary {
 		}
 
 		if (EXT == null)
-			throw new TSDRLibraryNotCompatible("Your OS or CPU is not yet supported, sorry.");
+			throw new TSDRLibraryNotCompatible("您的操作系统或CPU暂不支持，抱歉。");
 		
 		return LIBPREFIX+name+EXT;
 	}
 	
 	/**
-	 * Extracts a library to a temporary path and prays for the OS to delete it after the app closes.
-	 * @param name
-	 * @return
-	 * @throws TSDRLibraryNotCompatible
+	 * 将动态库提取到临时目录，供后续加载。
+	 * @param name 库名
+	 * @return 临时文件对象
+	 * @throws TSDRLibraryNotCompatible 如果不支持的系统或架构
 	 */
 	public static final File extractLibrary(final String name) throws TSDRLibraryNotCompatible {
 
@@ -119,7 +115,7 @@ public class TSDRLibrary {
 			ARCHNAME = "X86";
 		
 		if (OSNAME == null || ARCHNAME == null)
-			throw new TSDRLibraryNotCompatible("Your OS or CPU is not yet supported, sorry.");
+			throw new TSDRLibraryNotCompatible("您的操作系统或CPU暂不支持，抱歉。");
 
 		final String relative_path = "lib/"+OSNAME+"/"+ARCHNAME+"/"+dllfullfilename;
 
@@ -130,7 +126,7 @@ public class TSDRLibrary {
 				in = new FileInputStream(relative_path);
 			} catch (FileNotFoundException e) {}
 
-		if (in == null) throw new TSDRLibraryNotCompatible("The library has not been compiled for your OS/Architecture yet ("+OSNAME+"/"+ARCHNAME+").");
+		if (in == null) throw new TSDRLibraryNotCompatible("该库尚未为您的操作系统/架构编译 ("+OSNAME+"/"+ARCHNAME+")。");
 
 		File temp;
 		try {
@@ -140,11 +136,11 @@ public class TSDRLibrary {
 			temp = new File(System.getProperty("java.io.tmpdir"), dllfullfilename);
 			final String fullpath = temp.getAbsolutePath();
 			
-			// if the file exists and we have opened it before, don't overwrite it! DANGEROUS!
+			// 如果文件已存在且已记录过，不覆盖
 			if (temp.exists() && files_to_delete_on_shutdown.contains(fullpath))
 				return temp;
 			else if (temp.exists()) {
-				// if file exists but we have never opened it, delete it - it is probably an old version
+				// 文件存在但未记录，删除旧版本
 				try {
 					temp.delete();
 				} catch (Throwable e) {}
@@ -160,7 +156,7 @@ public class TSDRLibrary {
 			in.close();
 			
 			if (!temp.exists())
-				throw new TSDRLibraryNotCompatible("Cannot extract library files to temporary directory.");
+				throw new TSDRLibraryNotCompatible("无法将库文件提取到临时目录。");
 			
 			
 			if (!files_to_delete_on_shutdown.contains(fullpath)) files_to_delete_on_shutdown.add(fullpath);
@@ -172,13 +168,13 @@ public class TSDRLibrary {
 	}
 
 	/**
-	 * Loads a dll library on the fly based on OS and ARCH. Do not supply extension.
-	 * @param name
+	 * 动态加载指定名称的本地库（不带扩展名）。
+	 * @param name 库名
 	 * @throws IOException 
 	 */
 	private static final void loadLibrary(final String name) throws TSDRLibraryNotCompatible {
 		try {
-			// try traditional method
+			// 先尝试传统方式加载
 			System.loadLibrary(name); 
 		} catch (Throwable t) {
 				final File library = extractLibrary(name);
@@ -188,7 +184,7 @@ public class TSDRLibrary {
 	}
 
 	/**
-	 * Load the libraries statically and detect errors
+	 * 静态代码块，初始化时加载本地库。
 	 */
 	static {
 		try {
@@ -199,7 +195,7 @@ public class TSDRLibrary {
 	}
 	
 	/**
-	 * Initializes the library by attempting to load the required underlying native binaries.
+	 * 构造函数，初始化库并加载本地二进制。
 	 * @throws TSDRException
 	 */
 	public TSDRLibrary() throws TSDRException {
@@ -207,50 +203,48 @@ public class TSDRLibrary {
 		init();
 	}
 
-	/** Called on initialisation to set up native buffers and variables */
+	/** 初始化本地缓冲区和变量 */
 	private native void init();
 	
-	/** Set the tuned frequency */
+	/** 设置中心频率 */
 	public native void setBaseFreq(long freq) throws TSDRException;
 	
 	/**
-	 * Load a plugin so that it is ready to be started via {@link #nativeStart()}
-	 * @param pluginfilepath
-	 * @param params
+	 * 加载插件，准备后续启动。
+	 * @param pluginfilepath 插件路径
+	 * @param params 参数
 	 * @throws TSDRException
 	 */
 	private native void loadPlugin(String pluginfilepath, String params) throws TSDRException;
 	
 	/**
-	 * Starts the processing. After this point on, either an exception will be genrated or the callback
-	 * will start receiving frames. This function DOES block and run on the same thread as the caller. 
-	 * {@link #startAsync(int, int, double)} uses it so one needs to use {@link #startAsync(int, int, double)} instead of calling this directly.
+	 * 启动处理流程。阻塞调用，直到结束。
 	 * @throws TSDRException
 	 */
 	private native void nativeStart() throws TSDRException;
 	
 	/**
-	 * Stop the processing that was started with {@link #nativeStart()} before.
+	 * 停止处理流程。
 	 * @throws TSDRException
 	 */
 	public native void stop() throws TSDRException;
 	
 	/**
-	 * Unloads and frees any resources taken by the native plugin that was previously loaded with {@link #loadPlugin(TSDRSource)}
+	 * 卸载并释放已加载的本地插件。
 	 * @throws TSDRException
 	 */
 	public native void unloadPlugin() throws TSDRException;
 	
 	/**
-	 * Set gain level
-	 * @param gain from 0 to 1
+	 * 设置增益（0~1）。
+	 * @param gain 增益
 	 * @throws TSDRException
 	 */
 	public native void setGain(float gain) throws TSDRException;
 	
 	/**
-	 * Check whether the library is running
-	 * @return true if {@link #nativeStart()} is still working.
+	 * 检查库是否正在运行。
+	 * @return true表示nativeStart仍在运行
 	 */
 	public native boolean isRunning();
 	public native void setInvertedColors(boolean invertedEnabled);
@@ -260,15 +254,14 @@ public class TSDRLibrary {
 	public native void setResolution(int height, double refreshrate) throws TSDRException;
 	public native void setMotionBlur(float gain) throws TSDRException;
 	
-	/** Releases any resources taken by the native library. Unless {@link #init()} is called again, any call to {@link TSDRLibrary} can have unexpected
-	 * result and may crash the JVM */
+	/**
+	 * 释放本地库资源。除非再次调用init，否则后续调用TSDRLibrary方法可能导致崩溃。
+	 */
 	public native void free();
 	
 	/**
-	 * Loads the plugin. It is always safe to do {@link #unloadPlugin()} first before calling this.
-	 * Note: If the plugin that you are trying to load is already in use, unload it first otherwise 
-	 * you might receive an exception.
-	 * @param plugin the plugin to be loaded
+	 * 加载插件（推荐先unloadPlugin）。
+	 * @param plugin 插件对象
 	 * @throws TSDRException
 	 */
 	public void loadPlugin(final TSDRSource plugin) throws TSDRException {
@@ -276,13 +269,11 @@ public class TSDRLibrary {
 	}
 	
 	/**
-	 * Starts the whole system. After this function is called, assuming there are no exceptions,
-	 * the callbacks registered via {@link #registerFrameReadyCallback(FrameReadyCallback)} will start
-	 * receiving video frames.
-	 * Note: width and height are not what you might think. For example for 800x600@60Hz resolution, width and height might be 1056x628. Consult {@link VideoMode} for more information.
-	 * @param width the desired total width
-	 * @param height the desired total height
-	 * @param refreshrate the desired refreshrate
+	 * 启动整个系统。调用后，所有注册的帧回调将开始接收视频帧。
+	 * 注意：width和height不一定是你期望的分辨率。例如800x600@60Hz实际可能为1056x628。详见VideoMode。
+	 * @param width 总宽度
+	 * @param height 总高度
+	 * @param refreshrate 刷新率
 	 * @throws TSDRException
 	 */
 	public void startAsync(int height, double refreshrate) throws TSDRException {
@@ -312,7 +303,7 @@ public class TSDRLibrary {
 	}
 	
 	/**
-	 * Unloads the native libraries just before the JVM closes.
+	 * JVM关闭前自动卸载本地库。
 	 */
 	final private Thread unloaderhook = new Thread() {
 		@Override
@@ -347,9 +338,9 @@ public class TSDRLibrary {
 	}
 	
 	/**
-	 * Register the callback that will receive the decoded video frames
+	 * 注册帧回调。
 	 * @param callback
-	 * @return true on success, false if the callback is already registered
+	 * @return true表示注册成功，false表示已注册
 	 */
 	public boolean registerFrameReadyCallback(final FrameReadyCallback callback) {
 		if (callbacks.contains(callback))
@@ -359,14 +350,17 @@ public class TSDRLibrary {
 	}
 	
 	/**
-	 * Unregister a callback previously registered with {@link #unregisterFrameReadyCallback(FrameReadyCallback)}
+	 * 注销帧回调。
 	 * @param callback
-	 * @return true if it was removed, false if it was never registered, therefore not removed
+	 * @return true表示移除成功，false表示未注册
 	 */
 	public boolean unregisterFrameReadyCallback(final FrameReadyCallback callback) {
 		return callbacks.remove(callback);
 	}
 	
+	/**
+	 * 注册数值变化回调。
+	 */
 	public boolean registerValueChangedCallback(final IncomingValueCallback callback) {
 		if (value_callbacks.contains(callback))
 			return false;
@@ -374,43 +368,42 @@ public class TSDRLibrary {
 			return value_callbacks.add(callback);
 	}
 	
+	/**
+	 * 注销数值变化回调。
+	 */
 	public boolean unregisterValueChangedCallback(final IncomingValueCallback callback) {
 		return callbacks.remove(callback);
 	}
 	
 	/**
-	 * This interface will allow you to asynchronously receive information about video frames and exceptions from the library.
-	 * 
-	 * @author Martin Marinov
-	 *
+	 * 回调接口：异步接收视频帧和异常。
 	 */
 	public interface FrameReadyCallback {
 		
 		/**
-		 * When a new video frame was generated, this callback will trigger giving you an oportunity to 
-		 * save it or show it to the user.
-		 * This method should return quickly otherwise you risk dropping frames.
-		 * After this method terminates, the {@link BufferedImage} is not guaranteed to be the same or indeed thread safe.
-		 * This is because as soon as this function terminates, the system will start painting the next frame onto the same image.
+		 * 新视频帧生成时回调。
 		 * @param lib
 		 * @param frame
 		 */
 		void onFrameReady(final TSDRLibrary lib, final BufferedImage frame);
 		
 		/**
-		 * If any exception was generated while the library was running
+		 * 运行时发生异常时回调。
 		 * @param lib
 		 * @param e
 		 */
 		void onException(final TSDRLibrary lib, final Exception e);
 		
 		/**
-		 * If the {@link TSDRLibrary#stop()} was called.
+		 * 停止时回调。
 		 * @param lib
 		 */
 		void onStopped(final TSDRLibrary lib);
 	}
 	
+	/**
+	 * 回调接口：异步接收数值变化和绘图数据。
+	 */
 	public interface IncomingValueCallback {
 		public static enum VALUE_ID {PLL_FRAMERATE, AUTOCORRECT_RESET, FRAMES_COUNT, AUTOGAIN, SNR, AUTOCORRECT_DUMPED};
 		public static enum PLOT_ID {FRAME, LINE};
@@ -421,9 +414,9 @@ public class TSDRLibrary {
 
 	
 	/**
-	 * The native code should call this method to initialize or resize the buffer array before accessing it
-	 * @param x the width of the frame
-	 * @param y the height of the frame
+	 * 本地代码应调用此方法以初始化或调整像素缓冲区大小。
+	 * @param x 帧宽度
+	 * @param y 帧高度
 	 */
 	final private void fixSize(final int x, final int y) {
 		if (bimage == null || bimage.getWidth() != x || bimage.getHeight() != y) {
@@ -470,8 +463,7 @@ public class TSDRLibrary {
 	}
 	
 	/**
-	 * The native code should invoke this method when it has written data to the buffer variable.
-	 * This method writes the result into the bitmap
+	 * 本地代码写入像素数据后应调用此方法，通知所有帧回调。
 	 */
 	final private void notifyCallbacks() {
 		try {

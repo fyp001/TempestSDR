@@ -23,6 +23,10 @@
 #define SYNCDETECTOR_STATE_LOCKED (1)
 
 
+/*
+ * 在数据中查找最佳条带位置和大小，使条带与剩余部分的均值差异最大。
+ * 返回最佳拟合值和起始索引。
+ */
 static inline void findbestfit(float * data, const int size, const float totalsum, const int stripsize, double * bestfit, int * bestfitid) {
 	const double bigstripsizef = size - stripsize;
 	const double stripsizef = stripsize;
@@ -31,8 +35,8 @@ static inline void findbestfit(float * data, const int size, const float totalsu
 	double currsum = 0.0;
 	for (i = 0; i < stripsize; i++) currsum += data[i];
 
-	// totalsum - currsum is the sum in the remainder of the strip
-	// we want to maximize the difference squared
+	// totalsum - currsum 是剩余部分的和
+	// 最大化均值差的平方
 	const double bestfitsqzero = (totalsum - currsum)/bigstripsizef - currsum/stripsizef;
 	*bestfit = bestfitsqzero * bestfitsqzero;
 	*bestfitid = 0;
@@ -40,8 +44,7 @@ static inline void findbestfit(float * data, const int size, const float totalsu
 	const int size1 = size - 1;
 	const int sizemstepsize = size-stripsize;
 	for (i = 0; i < size1; i++) {
-		// i is the id to remove from the sum
-		// i + stripsize is the id to add to the sum
+		// i为要移除的索引，i+stripsize为要加入的索引
 		const double datatoremove = data[i];
 		const int toremoveid = (i < sizemstepsize) ? (i+stripsize) : (i-sizemstepsize); // (i+stripsize) % size
 		const double datatoadd = data[toremoveid];
@@ -68,6 +71,10 @@ static inline void findbestfit(float * data, const int size, const float totalsu
 		}; \
 	}
 
+/*
+ * 查找数据中的最佳条带（同步信号），并用高斯模糊平滑。
+ * 结果用于同步检测。
+ */
 void findthesweetspot(sweetspot_data_t * db, float * data, int size, int minsize, double lowpasscoeff) {
 	int i;
 	if (minsize < 1) minsize = 1;
@@ -76,7 +83,7 @@ void findthesweetspot(sweetspot_data_t * db, float * data, int size, int minsize
 	if (db->curr_stripsize < minsize) db->curr_stripsize = minsize;
 	else if (db->curr_stripsize > size2) db->curr_stripsize = size2;
 
-	gaussianblur(data, size);
+	gaussianblur(data, size); // 高斯模糊
 
 	double totalsum = 0.0;
 	for (i = 0; i < size; i++) totalsum += data[i];
@@ -84,7 +91,7 @@ void findthesweetspot(sweetspot_data_t * db, float * data, int size, int minsize
 	int beststripstart, beststripstart_temp, beststripsize = db->curr_stripsize, stripsize = db->curr_stripsize;
 	double bestfit, bestfit_temp;
 
-	// look for the best fit of strip size stripsize
+	// 以当前条带宽度查找最佳位置
 	findbestfit(data, size, totalsum, stripsize, &bestfit, &beststripstart);
 
 	RUNWITH_SIZE(db->curr_stripsize-4);
@@ -94,7 +101,7 @@ void findthesweetspot(sweetspot_data_t * db, float * data, int size, int minsize
 
 	db->curr_stripsize = beststripsize;
 
-
+	// 标记条带边界
 	data[beststripstart] = PIXEL_SPECIAL_VALUE_B;
 	data[(beststripstart+beststripsize) % size] = PIXEL_SPECIAL_VALUE_B;
 
@@ -114,22 +121,29 @@ void findthesweetspot(sweetspot_data_t * db, float * data, int size, int minsize
 
 	db->vx = (rawvx > h2) ? (size - rawvx) : ((rawvx < -h2) ? (-size - rawvx) : (rawvx));
 	db->absvx = (db->vx >= 0) ? (db->vx) : (-db->vx);
-
-
 }
 
+/*
+ * 在图像数据中画一条竖线。
+ */
 void verticalline(int x, float * data, int width, int height, float val) {
 	int i;
 	for (i = 0; i < height; i++)
 		data[x + width*i] = val;
 }
 
+/*
+ * 在图像数据中画一条横线。
+ */
 void horizontalline(int y, float * data, int width, int height, float val) {
 	int i;
 	for (i = 0; i < width; i++)
 		data[i+width*y] = val;
 }
 
+/*
+ * 帧率锁相环(PLL)算法，根据同步条带速度调整帧率。
+ */
 void frameratepll(syncdetector_t * sy, tsdr_lib_t * tsdr, sweetspot_data_t * db_x, int width, int height) {
 	sy->avg_speed = sy->avg_speed * 0.99 + 0.01 * db_x->vx;
 
@@ -152,6 +166,9 @@ void frameratepll(syncdetector_t * sy, tsdr_lib_t * tsdr, sweetspot_data_t * db_
 	}
 }
 
+/*
+ * 初始化同步检测器结构体。
+ */
 void syncdetector_init(syncdetector_t * sy) {
 	sy->db_x.curr_stripsize = 0;
 	sy->db_x.dx = 0;
@@ -168,6 +185,11 @@ void syncdetector_init(syncdetector_t * sy) {
 	sy->avg_speed = 0;
 }
 
+/*
+ * 图像同步检测主流程，根据消隐区检测图像起始位置。
+ * 支持自动移位和绿色同步线绘制。
+ * 返回同步后的图像数据指针。
+ */
 float * syncdetector_run(syncdetector_t * sy, tsdr_lib_t * tsdr, float * data, float * outputdata, int width, int height, float * widthbuffer, float * heightbuffer, int greenlines, int modify_data_allowed) {
 	/*
 	* Detect image synchronisation
@@ -175,12 +197,13 @@ float * syncdetector_run(syncdetector_t * sy, tsdr_lib_t * tsdr, float * data, f
 	* Use image blanking regions to detect where in the stream the image starts.
 	*/
 
+	// 检测水平和垂直方向的最佳同步条带
 	findthesweetspot(&sy->db_x, widthbuffer, width, width * 0.05f, FRAMERATE_DX_LOWPASS_COEFF_WIDTH);
 	findthesweetspot(&sy->db_y, heightbuffer, height, height * 0.01f, FRAMERATE_DX_LOWPASS_COEFF_HEIGHT );
 
 	const int size = width * height;
 
-	// do the framerate pll
+	// 帧率锁相环调整
 	frameratepll(sy, tsdr, &sy->db_x, width, height);
 
 	// do the shift itself

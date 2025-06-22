@@ -13,8 +13,8 @@ package martin.tempest.gui.scale;
 
 
 /**
- * Implements a zoomable scale that can map values from min_val to max_val to
- * 0 to max_value pixels. It also has a maximum zoomable value that you can set up.
+ * 实现一个可缩放的X轴刻度，将[min_val, max_val]区间的值映射到0到max_value像素区间。
+ * 支持最大缩放限制。
  * 
  * @author martinmarinov
  *
@@ -34,33 +34,53 @@ public class ZoomableXScale {
 	private final Object locker = new Object();
 
 	/**
-	 * Set the values that will show up
-	 * @param min_value
-	 * @param max_value
-	 * @param max_zoom_val the maximum size of maximum zoom. If this is 0.2 then the maximum amount you can zoom is having 0.2 value accross the whole screen
+	 * 构造函数，指定最小值、最大值和最大缩放值。
+	 * @param min_value X轴最小值
+	 * @param max_value X轴最大值
+	 * @param max_zoom_val 最大可缩放区间
 	 */
 	public ZoomableXScale(final double min_value, final double max_value, final double max_zoom_val) {
 		setMinMaxValue(min_value, max_value, max_zoom_val);
 	}
 	
+	/**
+	 * 构造函数，指定最小值和最大值，最大缩放为1.0。
+	 * @param min_value X轴最小值
+	 * @param max_value X轴最大值
+	 */
 	public ZoomableXScale(final double min_value, final double max_value) {
 		this(min_value, max_value, 1.0);
 	}
 	
+	/**
+	 * 构造函数，指定最大缩放值，默认区间[0,100]。
+	 * @param max_zoom_val 最大可缩放区间
+	 */
 	public ZoomableXScale(final double max_zoom_val) {
 		this(0, 100, max_zoom_val);
 	}
 	
+	/**
+	 * 默认构造函数，区间[0,100]，最大缩放为1.0。
+	 */
 	public ZoomableXScale() {
 		this(0, 100, 1.0);
 	}
 	
+	/**
+	 * 设置是否自动修正缩放和偏移。
+	 * @param enforce 是否启用自动修正
+	 */
 	public void autofixZoomAndOffsetEnabled(final boolean enforce) {
 		synchronized (locker) {
 			this.autofixzoomandoffset = enforce;
 		}
 	}
 
+	/**
+	 * 设置最大像素宽度。
+	 * @param max_pixels 最大像素数
+	 */
 	public void setMaxPixels(final int max_pixels) {
 		synchronized (locker) {
 			this.max_pixels = max_pixels;
@@ -69,6 +89,12 @@ public class ZoomableXScale {
 		}
 	}
 
+	/**
+	 * 设置最小值、最大值和最大缩放值。
+	 * @param min_value X轴最小值
+	 * @param max_value X轴最大值
+	 * @param max_zoom_val 最大可缩放区间
+	 */
 	public void setMinMaxValue(final double min_value, final double max_value, final double max_zoom_val) {
 		synchronized (locker) {
 			this.max_zoom_val = max_zoom_val;
@@ -76,6 +102,11 @@ public class ZoomableXScale {
 		}
 	}
 	
+	/**
+	 * 设置最小值和最大值。
+	 * @param min_value X轴最小值
+	 * @param max_value X轴最大值
+	 */
 	public void setMinMaxValue(final double min_value, final double max_value) {
 		synchronized (locker) {
 			this.min_value = min_value;
@@ -85,6 +116,10 @@ public class ZoomableXScale {
 		}
 	}
 
+	/**
+	 * 按像素平移X轴偏移量。
+	 * @param offset 偏移像素数
+	 */
 	public void moveOffsetWithPixels(final int offset) {
 		synchronized (locker) {
 			setPxOffset_unsafe(offset_px - offset);
@@ -94,6 +129,10 @@ public class ZoomableXScale {
 		}
 	}
 
+	/**
+	 * 按值平移X轴偏移量。
+	 * @param value 偏移的实际值
+	 */
 	public void moveOffsetWithValue(final double value) {
 		synchronized (locker) {
 			setValOffset_unsafe(offset_val - value);
@@ -103,6 +142,11 @@ public class ZoomableXScale {
 		}
 	}
 
+	/**
+	 * 以某像素为中心进行缩放。
+	 * @param px 缩放中心像素
+	 * @param coeff 缩放系数
+	 */
 	public void zoomAround(final int px, final double coeff) {
 		synchronized (locker) {
 			final double val = pixels_to_value_absolute(px);
@@ -118,52 +162,89 @@ public class ZoomableXScale {
 		}
 	}
 	
+	/**
+	 * 自动修正偏移。
+	 */
 	public void fixOffset() {
 		synchronized (locker) {
 			autoFixOffset_unsafe();
 		}
 	}
 	
+	/**
+	 * 重置缩放和偏移到初始状态。
+	 */
 	public void reset() {
 		synchronized (locker) {
 			reset_unsafe();
 		}
 	}
 
+	/**
+	 * 将像素坐标转换为绝对值。
+	 * @param pixels 像素坐标
+	 * @return 对应的实际值
+	 */
 	public double pixels_to_value_absolute(final int pixels) {
 		synchronized (locker) {
 			return pixels * one_px_in_values_relative + offset_val + min_value;
 		}
 	}
 
+	/**
+	 * 将像素坐标转换为相对值（不含偏移）。
+	 * @param pixels 像素坐标
+	 * @return 相对值
+	 */
 	public double pixels_to_value_relative(final int pixels) {
 		synchronized (locker) {
 			return pixels * one_px_in_values_relative;
 		}
 	}
 
+	/**
+	 * 将实际值转换为像素坐标（绝对）。
+	 * @param val 实际值
+	 * @return 对应的像素坐标
+	 */
 	public int value_to_pixel_absolute(final double val) {
 		synchronized (locker) {
 			return (int) ((val - min_value) * one_val_in_pixels_relative) - offset_px;
 		}
 	}
 
+	/**
+	 * 将实际值转换为像素坐标（相对）。
+	 * @param val 实际值
+	 * @return 相对像素坐标
+	 */
 	public int value_to_pixel_relative(final double val) {
 		synchronized (locker) {
 			return (int) (val * one_val_in_pixels_relative);
 		}
 	}
 	
+	/**
+	 * 设置像素偏移（线程不安全，仅限内部调用）。
+	 * @param offset_px 像素偏移
+	 */
 	private void setPxOffset_unsafe(final int offset_px) {
 		this.offset_px = offset_px;
 		offset_val = pixels_to_value_relative(offset_px);
 	}
 	
+	/**
+	 * 设置值偏移（线程不安全，仅限内部调用）。
+	 * @param offset_val 值偏移
+	 */
 	private void setValOffset_unsafe(final double offset_val) {
 		this.offset_val = offset_val;
 		offset_px = value_to_pixel_relative(offset_val);
 	}
 	
+	/**
+	 * 重新计算像素与值的映射关系（线程不安全，仅限内部调用）。
+	 */
 	private void calculateValues_unsafe() {
 
 		one_val_in_pixels_relative = max_pixels / ((max_value - min_value)*scale);
@@ -177,6 +258,9 @@ public class ZoomableXScale {
 		}
 	}
 	
+	/**
+	 * 重置缩放和偏移到初始状态（线程不安全，仅限内部调用）。
+	 */
 	private void reset_unsafe() {
 		scale = 1;
 		offset_val = 0;
@@ -185,6 +269,9 @@ public class ZoomableXScale {
 		calculateValues_unsafe();
 	}
 	
+	/**
+	 * 自动修正偏移，防止超出边界（线程不安全，仅限内部调用）。
+	 */
 	private void autoFixOffset_unsafe() {
 		
 		if (offset_px < 0)
@@ -192,7 +279,7 @@ public class ZoomableXScale {
 		
 		final double max_val = pixels_to_value_absolute(max_pixels);
 		if (max_val > this.max_value)
-			 setValOffset_unsafe(this.max_value - pixels_to_value_relative(max_pixels) - this.min_value);
+				 setValOffset_unsafe(this.max_value - pixels_to_value_relative(max_pixels) - this.min_value);
 
 		if (offset_px < 0)
 			reset_unsafe();

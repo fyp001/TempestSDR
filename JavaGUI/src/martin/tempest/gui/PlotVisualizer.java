@@ -173,6 +173,8 @@ public class PlotVisualizer extends JPanel {
 		return bestid;
 	}
 
+
+
 	public void setSelectedValue(double val) {
 		if (data == null) {
 			synchronized (locker) {

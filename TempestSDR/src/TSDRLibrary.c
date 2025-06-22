@@ -59,6 +59,9 @@ struct tsdr_context {
 #define RETURN_OK(tsdr) {tsdr->errormsg_code = TSDR_OK; return TSDR_OK;}
 #define RETURN_PLUGIN_RESULT(tsdr,plugin,result) {if ((result) == TSDR_OK) RETURN_OK(tsdr) else RETURN_EXCEPTION(tsdr,plugin.tsdrplugin_getlasterrortext(),result);}
 
+/*
+ * 初始化TSDR主库结构体，分配资源并初始化各子模块。
+ */
 void tsdr_init(tsdr_lib_t ** tsdr, tsdr_value_changed_callback callback, tsdr_on_plot_ready_callback plotready_callback, void * ctx) {
 	int i;
 
@@ -93,6 +96,9 @@ void tsdr_init(tsdr_lib_t ** tsdr, tsdr_value_changed_callback callback, tsdr_on
 
 }
 
+/*
+ * 释放TSDR主库结构体及其所有资源。
+ */
 void tsdr_free(tsdr_lib_t ** tsdr) {
 	(*tsdr)->callback = NULL;
 	(*tsdr)->plotready_callback = NULL;
@@ -115,6 +121,9 @@ void tsdr_free(tsdr_lib_t ** tsdr) {
 	*tsdr = NULL;
 }
 
+/*
+ * 重置TSDR主库结构体，释放并重新初始化所有子模块。
+ */
 void tsdr_reset(tsdr_lib_t * tsdr) {
 
 	tsdr->syncoffset = 0;
@@ -133,6 +142,9 @@ void tsdr_reset(tsdr_lib_t * tsdr) {
 }
 
 
+/*
+ * 设置错误信息并保存到tsdr结构体。
+ */
 static inline void announceexception(tsdr_lib_t * tsdr, const char * message, int status) {
 	tsdr->errormsg_code = status;
 	if (status == TSDR_OK) return;
@@ -151,34 +163,52 @@ static inline void announceexception(tsdr_lib_t * tsdr, const char * message, in
 	strcpy(tsdr->errormsg, message);
 }
 
- char * tsdr_getlasterrortext(tsdr_lib_t * tsdr) {
+/*
+ * 获取最近一次错误的文本描述。
+ */
+char * tsdr_getlasterrortext(tsdr_lib_t * tsdr) {
 	if (tsdr->errormsg_code == TSDR_OK)
 		return NULL;
 	else
 		return tsdr->errormsg;
 }
 
- void announce_callback_changed(tsdr_lib_t * tsdr, int value_id, double arg0, double arg1) {
+/*
+ * 通知回调函数，参数变化。
+ */
+void announce_callback_changed(tsdr_lib_t * tsdr, int value_id, double arg0, double arg1) {
 	 if (tsdr->callback != NULL)
 		 tsdr->callback(value_id, arg0, arg1, tsdr->callbackctx);
  }
 
- void announce_plotready(tsdr_lib_t * tsdr, int plot_id, extbuffer_t * buffer, uint32_t data_size, uint32_t data_offset, uint32_t samplerate) {
+/*
+ * 通知回调函数，绘图数据已准备好。
+ */
+void announce_plotready(tsdr_lib_t * tsdr, int plot_id, extbuffer_t * buffer, uint32_t data_size, uint32_t data_offset, uint32_t samplerate) {
 		if (!buffer->valid || buffer->type != EXTBUFFER_TYPE_DOUBLE) return;
 
 		if (tsdr->plotready_callback != NULL)
 			tsdr->plotready_callback(plot_id, data_offset, buffer->dbuffer, data_size, samplerate, tsdr->callbackctx);
 }
 
- void * tsdr_getctx(tsdr_lib_t * tsdr) {
+/*
+ * 获取库的回调上下文。
+ */
+void * tsdr_getctx(tsdr_lib_t * tsdr) {
 	 return tsdr->callbackctx;
  }
 
- int tsdr_isrunning(tsdr_lib_t * tsdr) {
+/*
+ * 判断库是否正在运行。
+ */
+int tsdr_isrunning(tsdr_lib_t * tsdr) {
 	return tsdr->nativerunning;
 }
 
- int tsdr_getsamplerate(tsdr_lib_t * tsdr) {
+/*
+ * 获取采样率，若插件未初始化或采样率异常则返回错误。
+ */
+int tsdr_getsamplerate(tsdr_lib_t * tsdr) {
 	if (!tsdr->plugin.initialized) RETURN_EXCEPTION(tsdr, "Cannot change sample rate. Plugin not loaded yet.", TSDR_ERR_PLUGIN);
 
 	tsdr->samplerate_real = tsdr->plugin.tsdrplugin_getsamplerate();
@@ -192,7 +222,10 @@ static inline void announceexception(tsdr_lib_t * tsdr, const char * message, in
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
- int tsdr_setbasefreq(tsdr_lib_t * tsdr, uint32_t freq) {
+/*
+ * 设置基准频率，若插件已初始化则同步到插件。
+ */
+int tsdr_setbasefreq(tsdr_lib_t * tsdr, uint32_t freq) {
 	tsdr->centfreq = freq;
 
 	if (tsdr->plugin.initialized) {
@@ -204,13 +237,18 @@ static inline void announceexception(tsdr_lib_t * tsdr, const char * message, in
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
-
+/*
+ * 频率微调，若插件已初始化则同步到插件。
+ */
 void shiftfreq(tsdr_lib_t * tsdr, int32_t diff) {
 	if (tsdr->plugin.initialized)
 		tsdr->plugin.tsdrplugin_setbasefreq(tsdr->centfreq+diff);
 }
 
- int tsdr_stop(tsdr_lib_t * tsdr) {
+/*
+ * 停止采集，通知插件并同步线程。
+ */
+int tsdr_stop(tsdr_lib_t * tsdr) {
 	if (!tsdr->running) RETURN_OK(tsdr);
 	int status = tsdr->plugin.tsdrplugin_stop();
 
@@ -223,7 +261,10 @@ void shiftfreq(tsdr_lib_t * tsdr, int32_t diff) {
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
- int tsdr_setgain(tsdr_lib_t * tsdr, float gain) {
+/*
+ * 设置增益，若插件已初始化则同步到插件。
+ */
+int tsdr_setgain(tsdr_lib_t * tsdr, float gain) {
 
 
 	tsdr->gain = gain;
@@ -236,11 +277,9 @@ void shiftfreq(tsdr_lib_t * tsdr, int32_t diff) {
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
-// bresenham algorithm
-// polyface filterbank
-// shielded loop antenna (magnetic)
-
-
+/*
+ * AM解调，将IQ信号转为幅值。
+ */
 static inline void am_demod(float * buffer, int size) {
 	/*
 	* Demodulate video signal from carrier wave
@@ -261,6 +300,9 @@ static inline void am_demod(float * buffer, int size) {
 	}
 }
 
+/*
+ * 采集线程主处理函数，负责数据流的解调、丢帧补偿、帧率检测等。
+ */
 void process(float *buf, uint64_t items_count, void *ctx, int64_t samples_dropped) {
 	assert((items_count & 1) == 0);
 
@@ -297,6 +339,9 @@ void process(float *buf, uint64_t items_count, void *ctx, int64_t samples_droppe
 
 }
 
+/*
+ * 重采样线程，负责将采样点插值为像素点。
+ */
 void decimatingthread(void * ctx) {
 	/*
 	* Interpolate samples to pixels
@@ -354,6 +399,9 @@ void decimatingthread(void * ctx) {
 	semaphore_leave(&context->this->threadsync);
 }
 
+/*
+ * 后处理线程，负责自动增益、低通滤波、同步检测等。
+ */
 void postprocessingthread(void * ctx) {
 	/*
 	* Thread wrapping post-processing stages
@@ -392,6 +440,9 @@ void postprocessingthread(void * ctx) {
 	semaphore_leave(&context->this->threadsync);
 }
 
+/*
+ * 视频解码线程，将像素数据回调给上层。
+ */
 void videodecodingthread(void * ctx) {
 
 	tsdr_context_t * context = (tsdr_context_t *) ctx;
@@ -417,11 +468,17 @@ void videodecodingthread(void * ctx) {
 	semaphore_leave(&context->this->threadsync);
 }
 
+/*
+ * 卸载插件，释放插件相关资源。
+ */
 void unloadplugin(tsdr_lib_t * tsdr) {
 	if (tsdr->plugin.initialized)
 		tsdrplug_close(&tsdr->plugin);
 }
 
+/*
+ * 卸载插件（带错误处理）。
+ */
 int tsdr_unloadplugin(tsdr_lib_t * tsdr) {
 	if (!tsdr->plugin.initialized) RETURN_EXCEPTION(tsdr, "No plugin has been loaded so it can't be unloaded", TSDR_ERR_PLUGIN);
 
@@ -434,6 +491,9 @@ int tsdr_unloadplugin(tsdr_lib_t * tsdr) {
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
+/*
+ * 加载插件。
+ */
 int tsdr_loadplugin(tsdr_lib_t * tsdr, const char * pluginfilepath, const char * params) {
 	if (tsdr->nativerunning || tsdr->running)
 			RETURN_EXCEPTION(tsdr, "The library is already running in async mode. Stop it first!", TSDR_ALREADY_RUNNING);
@@ -464,7 +524,10 @@ int tsdr_loadplugin(tsdr_lib_t * tsdr, const char * pluginfilepath, const char *
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
- int tsdr_readasync(tsdr_lib_t * tsdr, tsdr_readasync_function cb, void * ctx) {
+/*
+ * 异步采集主入口，启动所有线程。
+ */
+int tsdr_readasync(tsdr_lib_t * tsdr, tsdr_readasync_function cb, void * ctx) {
 	 int pluginsfault = 0;
 
 	if (tsdr->nativerunning || tsdr->running)
@@ -537,7 +600,10 @@ end:
 
 
 
- void set_internal_samplerate(tsdr_lib_t * tsdr, uint32_t samplerate) {
+/*
+ * 设置内部采样率及相关参数。
+ */
+void set_internal_samplerate(tsdr_lib_t * tsdr, uint32_t samplerate) {
 		tsdr->samplerate = samplerate;
 
 		const double real_width = samplerate / (tsdr->refreshrate * tsdr->height);
@@ -549,7 +615,10 @@ end:
 			tsdr->pixeltimeoversampletime = ((double) tsdr->samplerate) / tsdr->pixelrate;
  }
 
- int tsdr_setresolution(tsdr_lib_t * tsdr, int height, double refreshrate) {
+/*
+ * 设置分辨率（高度和刷新率）。
+ */
+int tsdr_setresolution(tsdr_lib_t * tsdr, int height, double refreshrate) {
 	if (height <= 0 || refreshrate <= 0)
 		RETURN_EXCEPTION(tsdr, "The supplied height is invalid or refreshrate is negative!", TSDR_WRONG_VIDEOPARAMS);
 
@@ -565,7 +634,10 @@ end:
 }
 
 
- int tsdr_motionblur(tsdr_lib_t * tsdr, float coeff) {
+/*
+ * 设置运动模糊系数。
+ */
+int tsdr_motionblur(tsdr_lib_t * tsdr, float coeff) {
 	if (coeff < 0.0f || coeff > 1.0f) return TSDR_WRONG_VIDEOPARAMS;
 	tsdr->motionblur = coeff;
 	RETURN_OK(tsdr);
@@ -573,7 +645,10 @@ end:
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
- int tsdr_sync(tsdr_lib_t * tsdr, int pixels, int direction) {
+/*
+ * 图像同步偏移。
+ */
+int tsdr_sync(tsdr_lib_t * tsdr, int pixels, int direction) {
 	if (pixels == 0) return TSDR_OK;
 	switch(direction) {
 	case DIRECTION_CUSTOM:
@@ -601,6 +676,9 @@ end:
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
+/*
+ * 设置整型参数。
+ */
 int tsdr_setparameter_int(tsdr_lib_t * tsdr, int parameter, uint32_t value) {
 	if (parameter < 0 || parameter >= COUNT_PARAM_INT)
 		RETURN_EXCEPTION(tsdr, "Invalid integer parameter id", TSDR_INVALID_PARAMETER);
@@ -610,6 +688,9 @@ int tsdr_setparameter_int(tsdr_lib_t * tsdr, int parameter, uint32_t value) {
 	return 0; // to avoid getting warning from stupid Eclpse
 }
 
+/*
+ * 设置浮点型参数。
+ */
 int tsdr_setparameter_double(tsdr_lib_t * tsdr, int parameter, double value) {
 	if (parameter < 0 || parameter >= COUNT_PARAM_DOUBLE)
 		RETURN_EXCEPTION(tsdr, "Invalid double floating point parameter id", TSDR_INVALID_PARAMETER);
